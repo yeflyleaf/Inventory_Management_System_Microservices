@@ -1,0 +1,41 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: gateway-service
+  codec:
+    max-in-memory-size: 50MB
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:127.0.0.1}:8848
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+      routes:
+        - id: user-service-route
+          uri: lb://user-service
+          predicates:
+            - Path=/api/user/**, /api/users/**, /api/auth/**, /api/admin/**, /api/dashboard/**, /api/settings/**, /api/system/**
+          filters:
+            - StripPrefix=1
+        - id: product-service-route
+          uri: lb://product-service
+          predicates:
+            - Path=/api/products/**, /api/stock/**, /api/warehouses/**, /api/customers/**, /api/suppliers/**, /api/barcode/**, /api/uploads/**, /api/product/**, /api/upload/**
+          filters:
+            - StripPrefix=1
+        - id: order-service-route
+          uri: lb://order-service
+          predicates:
+            - Path=/api/sale-orders/**, /api/purchase-orders/**, /api/sales/**, /api/purchase/**, /api/order/**
+          filters:
+            - StripPrefix=1
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"

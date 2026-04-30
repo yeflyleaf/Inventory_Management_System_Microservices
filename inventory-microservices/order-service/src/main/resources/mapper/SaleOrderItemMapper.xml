@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.order.mapper.SaleOrderItemMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sales_order_item (sales_order_id, item_id, qty, sale_price, subtotal)
+        VALUES (#{salesOrderId}, #{itemId}, #{qty}, #{salePrice}, #{subtotal})
+    </insert>
+
+    <select id="selectByOrderId" resultType="com.example.order.entity.SaleOrderItem">
+        SELECT * FROM sales_order_item WHERE sales_order_id = #{orderId}
+    </select>
+
+    <delete id="deleteByOrderId">
+        DELETE FROM sales_order_item WHERE sales_order_id = #{orderId}
+    </delete>
+
+</mapper>

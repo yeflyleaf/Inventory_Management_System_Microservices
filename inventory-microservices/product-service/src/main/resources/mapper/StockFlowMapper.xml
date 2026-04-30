@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.example.product.mapper.StockFlowMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO stock_flow (item_id, change_amount, change_type, ref_type, ref_id, warehouse_id, created_at)
+        VALUES (#{itemId}, #{changeAmount}, #{changeType}, #{refType}, #{refId}, #{warehouseId}, #{createdAt})
+    </insert>
+
+    <select id="selectAll" resultType="com.example.product.entity.StockFlow">
+        SELECT * FROM stock_flow ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByItemId" resultType="com.example.product.entity.StockFlow">
+        SELECT * FROM stock_flow WHERE item_id = #{itemId} ORDER BY created_at DESC
+    </select>
+
+    <select id="sumStockByItemIdAndWarehouseId" resultType="java.lang.Integer">
+        SELECT SUM(change_amount) FROM stock_flow
+        WHERE item_id = #{itemId}
+        <if test="warehouseId != null">
+            AND warehouse_id = #{warehouseId}
+        </if>
+    </select>
+
+    <delete id="deleteByItemId">
+        DELETE FROM stock_flow WHERE item_id = #{itemId}
+    </delete>
+
+    <select id="selectLastMovements" resultType="java.util.Map">
+        SELECT item_id as itemId, MAX(created_at) as lastDate
+        FROM stock_flow
+        GROUP BY item_id
+    </select>
+
+</mapper>

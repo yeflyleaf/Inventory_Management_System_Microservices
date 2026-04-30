@@ -1,0 +1,202 @@
+# ============================================================================
+
+services:
+  # --- 基础中间件: Redis ---
+  redis:
+    image: redis:7-alpine
+    container_name: inventory_redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - inventory_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Spring Cloud: Nacos (注册中心与配置中心) ---
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: inventory_nacos
+    restart: always
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    environment:
+      - MODE=standalone
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=demo1
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_DB_NAME=demo1
+      - MYSQL_SERVICE_USER=${MYSQL_USERNAME:-user1}
+      - MYSQL_SERVICE_PASSWORD=${MYSQL_PASSWORD:-user1}
+      - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - JVM_XMS=512m
+      - JVM_XMX=512m
+    extra_hosts:
+      - "demo1:host-gateway"
+    networks:
+      - inventory_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # --- Spring Cloud: Sentinel (流量治理) ---
+  sentinel:
+    image: bladex/sentinel-dashboard:1.8.8
+    container_name: inventory_sentinel
+    restart: always
+    ports:
+      - "8858:8858"
+    networks:
+      - inventory_network
+
+  # --- Spring Cloud: Seata (分布式事务) ---
+  seata:
+    image: seataio/seata-server:1.8.0
+    container_name: inventory_seata
+    restart: always
+    environment:
+      - SEATA_IP=seata
+      - STORE_MODE=file
+    ports:
+      - "8091:8091"
+    networks:
+      - inventory_network
+
+  # --- 微服务: Gateway (网关) ---
+  gateway-service:
+    build:
+      context: ./inventory-microservices
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: gateway-service/target/*.jar
+    container_name: inventory_gateway
+    restart: always
+    depends_on:
+      nacos:
+        condition: service_healthy
+    environment:
+      - NACOS_HOST=nacos
+      - REDIS_HOST=redis
+    ports:
+      - "8888:8888"
+    networks:
+      - inventory_network
+
+  # --- 微服务: User Service ---
+  user-service:
+    build:
+      context: ./inventory-microservices
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: user-service/target/*.jar
+    container_name: inventory_user
+    restart: always
+    depends_on:
+      nacos:
+        condition: service_healthy
+    environment:
+      - NACOS_HOST=nacos
+      - MYSQL_HOST=demo1
+      - REDIS_HOST=redis
+    extra_hosts:
+      - "demo1:host-gateway"
+    networks:
+      - inventory_network
+
+  # --- 微服务: Product Service ---
+  product-service:
+    build:
+      context: ./inventory-microservices
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: product-service/target/*.jar
+    container_name: inventory_product
+    restart: always
+    depends_on:
+      nacos:
+        condition: service_healthy
+    environment:
+      - NACOS_HOST=nacos
+      - MYSQL_HOST=demo1
+      - REDIS_HOST=redis
+    extra_hosts:
+      - "demo1:host-gateway"
+    networks:
+      - inventory_network
+
+  # --- 微服务: Order Service ---
+  order-service:
+    build:
+      context: ./inventory-microservices
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: order-service/target/*.jar
+    container_name: inventory_order
+    restart: always
+    depends_on:
+      nacos:
+        condition: service_healthy
+      seata:
+        condition: service_started
+    environment:
+      - NACOS_HOST=nacos
+      - MYSQL_HOST=demo1
+      - REDIS_HOST=redis
+      - SEATA_HOST=seata
+    extra_hosts:
+      - "demo1:host-gateway"
+    networks:
+      - inventory_network
+
+  # --- 配置初始化: 自动上传 Nacos 配置 ---
+  init-config:
+    image: curlimages/curl:latest
+    container_name: inventory_init_config
+    depends_on:
+      nacos:
+        condition: service_healthy
+    volumes:
+      - ./inventory-microservices/nacos-common-config.yaml:/app/common.yaml
+    networks:
+      - inventory_network
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+      - |
+        echo "Waiting for Nacos to be fully ready..."
+        sleep 10
+        echo "Uploading common.yaml to Nacos..."
+        curl -X POST "http://nacos:8848/nacos/v1/cs/configs" \
+             -d "dataId=common.yaml" \
+             -d "group=DEFAULT_GROUP" \
+             --data-urlencode "content@/app/common.yaml"
+        echo "Configuration uploaded successfully."
+
+  # --- 前端服务: Nginx ---
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    container_name: inventory_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway-service
+    networks:
+      - inventory_network
+
+networks:
+  inventory_network:
+    driver: bridge
+
+volumes:
+  redis_data:

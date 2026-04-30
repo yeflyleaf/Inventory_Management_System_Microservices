@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.order.mapper.SaleOrderMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sales_order (order_no, customer_id, total_amount, status, created_at, created_by)
+        VALUES (#{orderNo}, #{customerId}, #{totalAmount}, #{status}, #{createdAt}, #{createdBy})
+    </insert>
+
+    <update id="update">
+        UPDATE sales_order SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultType="com.example.order.entity.SaleOrder">
+        SELECT * FROM sales_order WHERE id = #{id}
+    </select>
+
+    <select id="selectAll" resultType="com.example.order.entity.SaleOrder">
+        SELECT * FROM sales_order
+    </select>
+
+</mapper>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.user.mapper.OperationLogMapper">
+
+    <insert id="insert" parameterType="com.example.common.entity.OperationLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO operation_log (
+            user_id, username, module, action, target, target_id,
+            description, ip_address, user_agent, request_method,
+            request_url, request_params, response_status, execution_time,
+            created_at
+        ) VALUES (
+            #{userId}, #{username}, #{module}, #{action}, #{target}, #{targetId},
+            #{description}, #{ipAddress}, #{userAgent}, #{requestMethod},
+            #{requestUrl}, #{requestParams}, #{responseStatus}, #{executionTime},
+            #{createdAt}
+        )
+    </insert>
+
+    <select id="findByCondition" resultType="com.example.common.entity.OperationLog">
+        SELECT * FROM operation_log
+        <where>
+            <if test="userId != null">AND user_id = #{userId}</if>
+            <if test="username != null and username != ''">AND username LIKE CONCAT('%', #{username}, '%')</if>
+            <if test="module != null and module != ''">AND module = #{module}</if>
+            <if test="action != null and action != ''">AND action = #{action}</if>
+            <if test="startTime != null">AND created_at &gt;= #{startTime}</if>
+            <if test="endTime != null">AND created_at &lt;= #{endTime}</if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByCondition" resultType="int">
+        SELECT COUNT(*) FROM operation_log
+        <where>
+            <if test="userId != null">AND user_id = #{userId}</if>
+            <if test="username != null and username != ''">AND username LIKE CONCAT('%', #{username}, '%')</if>
+            <if test="module != null and module != ''">AND module = #{module}</if>
+            <if test="action != null and action != ''">AND action = #{action}</if>
+            <if test="startTime != null">AND created_at &gt;= #{startTime}</if>
+            <if test="endTime != null">AND created_at &lt;= #{endTime}</if>
+        </where>
+    </select>
+
+    <select id="findAllModules" resultType="string">
+        SELECT DISTINCT module FROM operation_log WHERE module IS NOT NULL
+    </select>
+
+</mapper>

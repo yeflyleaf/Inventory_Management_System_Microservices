@@ -1,0 +1,29 @@
+# ConfigMap: 存放非敏感配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microservice-config
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+data:
+  MYSQL_HOST: "mysql-service"
+  MYSQL_PORT: "3306"
+  MYSQL_DATABASE: "demo1"
+  NACOS_HOST: "nacos-service"
+  REDIS_HOST: "redis-service"
+  SEATA_HOST: "seata-service"
+  SENTINEL_DASHBOARD: "sentinel-service"
+---
+# Secret: 存放敏感凭证 (生产环境应使用外部密钥管理)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: microservice-secret
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+type: Opaque
+stringData:
+  MYSQL_USERNAME: "user1"
+  MYSQL_PASSWORD: "user1"

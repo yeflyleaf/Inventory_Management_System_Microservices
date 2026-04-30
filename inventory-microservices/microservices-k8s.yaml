@@ -1,0 +1,704 @@
+# =====================================================================
+# Kubernetes 微服务部署清单 (合并版)
+# 包含：Namespace → ConfigMap/Secret → 中间件 → 业务微服务
+# 部署顺序：kubectl apply -f microservices-k8s.yaml
+# =====================================================================
+
+# --- 0. Namespace ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+
+---
+# --- 0.1 ConfigMap ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microservice-config
+  namespace: inventory-system
+data:
+  MYSQL_HOST: "mysql-service"
+  MYSQL_PORT: "3306"
+  MYSQL_DATABASE: "demo1"
+  NACOS_HOST: "nacos-service"
+  REDIS_HOST: "redis-service"
+  SEATA_HOST: "seata-service"
+  SENTINEL_DASHBOARD: "sentinel-service"
+
+---
+# --- 0.2 Secret ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: microservice-secret
+  namespace: inventory-system
+type: Opaque
+stringData:
+  MYSQL_USERNAME: "user1"
+  MYSQL_PASSWORD: "user1"
+
+---
+# --- 1. MySQL PVC ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: inventory-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# --- 1.1 MySQL Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: inventory-system
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ALLOW_EMPTY_PASSWORD
+          value: "yes"
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: microservice-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: microservice-secret
+              key: MYSQL_USERNAME
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: microservice-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        livenessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 15
+          periodSeconds: 5
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+
+---
+# --- 2. Nacos ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nacos
+  namespace: inventory-system
+  labels:
+    app: nacos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nacos
+  template:
+    metadata:
+      labels:
+        app: nacos
+    spec:
+      containers:
+      - name: nacos
+        image: nacos/nacos-server:v2.3.2
+        env:
+        - name: MODE
+          value: "standalone"
+        - name: SPRING_DATASOURCE_PLATFORM
+          value: "mysql"
+        - name: MYSQL_SERVICE_HOST
+          value: "mysql-service"
+        - name: MYSQL_SERVICE_PORT
+          value: "3306"
+        - name: MYSQL_SERVICE_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: microservice-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_SERVICE_USER
+          valueFrom:
+            secretKeyRef:
+              name: microservice-secret
+              key: MYSQL_USERNAME
+        - name: MYSQL_SERVICE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: microservice-secret
+              key: MYSQL_PASSWORD
+        - name: MYSQL_SERVICE_DB_PARAM
+          value: "characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+        - name: JVM_XMS
+          value: "256m"
+        - name: JVM_XMX
+          value: "256m"
+        ports:
+        - containerPort: 8848
+        - containerPort: 9848
+        - containerPort: 9849
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /nacos/index.html
+            port: 8848
+          initialDelaySeconds: 60
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /nacos/index.html
+            port: 8848
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nacos-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: nacos
+  ports:
+  - name: http
+    port: 8848
+    targetPort: 8848
+  - name: rpc
+    port: 9848
+    targetPort: 9848
+  - name: raft
+    port: 9849
+    targetPort: 9849
+
+---
+# --- 3. Redis ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: inventory-system
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command: ["redis-server", "--appendonly", "yes"]
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+
+---
+# --- 4. Seata ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seata
+  namespace: inventory-system
+  labels:
+    app: seata
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seata
+  template:
+    metadata:
+      labels:
+        app: seata
+    spec:
+      containers:
+      - name: seata
+        image: seataio/seata-server:1.8.0
+        env:
+        - name: SEATA_IP
+          value: "seata-service"
+        - name: STORE_MODE
+          value: "file"
+        ports:
+        - containerPort: 8091
+        - containerPort: 7091
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        livenessProbe:
+          tcpSocket:
+            port: 8091
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          tcpSocket:
+            port: 8091
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seata-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: seata
+  ports:
+  - name: rpc
+    port: 8091
+    targetPort: 8091
+  - name: http
+    port: 7091
+    targetPort: 7091
+
+---
+# --- 5. Sentinel Dashboard ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel
+  namespace: inventory-system
+  labels:
+    app: sentinel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentinel
+  template:
+    metadata:
+      labels:
+        app: sentinel
+    spec:
+      containers:
+      - name: sentinel
+        image: bladex/sentinel-dashboard:1.8.8
+        ports:
+        - containerPort: 8858
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8858
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8858
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentinel-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: sentinel
+  ports:
+  - port: 8080
+    targetPort: 8858
+
+---
+# --- 6. User Service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: inventory-system
+  labels:
+    app: user-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+      - name: user-service
+        image: user-service:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: microservice-secret
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: user-service
+  ports:
+  - port: 8081
+    targetPort: 8081
+  type: ClusterIP
+
+---
+# --- 7. Product Service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: inventory-system
+  labels:
+    app: product-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+      - name: product-service
+        image: product-service:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8082
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: microservice-secret
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: product-service
+  ports:
+  - port: 8082
+    targetPort: 8082
+  type: ClusterIP
+
+---
+# --- 8. Order Service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: inventory-system
+  labels:
+    app: order-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+      - name: order-service
+        image: order-service:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8083
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: microservice-secret
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8083
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8083
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8083
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: order-service
+  ports:
+  - port: 8083
+    targetPort: 8083
+  type: ClusterIP
+
+---
+# --- 9. Gateway Service (对外入口 NodePort) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+  namespace: inventory-system
+  labels:
+    app: gateway-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+    spec:
+      containers:
+      - name: gateway-service
+        image: gateway-service:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8888
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: microservice-secret
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8888
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8888
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8888
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: inventory-system
+spec:
+  selector:
+    app: gateway-service
+  ports:
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30088
+  type: NodePort

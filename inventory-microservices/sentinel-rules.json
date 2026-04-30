@@ -1,0 +1,9 @@
+[
+  {
+    "resource": "getProducts",
+    "grade": 1,
+    "count": 10,
+    "limitApp": "default",
+    "asynchronous": false
+  }
+]

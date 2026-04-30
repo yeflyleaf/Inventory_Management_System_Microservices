@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.user.mapper.UserMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.user.entity.User">
+        <id column="id" property="id" />
+        <result column="username" property="username" />
+        <result column="password" property="password" />
+        <result column="nickname" property="nickname" />
+        <result column="role" property="role" />
+        <result column="status" property="status" />
+        <result column="avatar" property="avatar" />
+        <result column="phone" property="phone" />
+        <result column="email" property="email" />
+        <result column="last_login_at" property="lastLoginAt" />
+        <result column="created_at" property="createdAt" />
+        <result column="updated_at" property="updatedAt" />
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (username, password, nickname, role, status, avatar, phone, email, last_login_at, created_at, updated_at)
+        VALUES (#{username}, #{password}, #{nickname}, #{role}, #{status}, #{avatar}, #{phone}, #{email}, #{lastLoginAt}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        UPDATE user
+        SET nickname = #{nickname},
+            role = #{role},
+            status = #{status},
+            avatar = #{avatar},
+            phone = #{phone},
+            email = #{email},
+            last_login_at = #{lastLoginAt},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updatePassword">
+        UPDATE user
+        SET password = #{password},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE user
+        SET status = #{status},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM user WHERE id = #{id}
+    </delete>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM user WHERE id = #{id}
+    </select>
+
+    <select id="selectByUsername" resultMap="BaseResultMap">
+        SELECT * FROM user WHERE username = #{username}
+    </select>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM user
+    </select>
+
+    <select id="selectByCondition" resultMap="BaseResultMap">
+        SELECT * FROM user
+        <where>
+            <if test="name != null and name != ''">
+                AND (username LIKE CONCAT('%', #{name}, '%') OR nickname LIKE CONCAT('%', #{name}, '%'))
+            </if>
+            <if test="role != null and role != ''">
+                AND role = #{role}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

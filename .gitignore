@@ -1,0 +1,166 @@
+# ============================================
+# 进销存管理系统 - .gitignore
+# ============================================
+
+# ------------------------------------------
+# General / OS / IDE
+# ------------------------------------------
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.iml
+*.sublime-workspace
+*.sublime-project
+*.code-workspace
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Temporary files
+tmp/
+temp/
+.temp/
+
+# ------------------------------------------
+# Frontend (Vue3 + Vite + Electron + Capacitor)
+# ------------------------------------------
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+dist_electron/
+build/
+out/
+release/
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Capacitor/Android Build artifacts
+Frontend/android/.gradle/
+Frontend/android/local.properties
+Frontend/android/*/build/
+Frontend/android/build/
+Frontend/android/app/build/
+Frontend/android/captures/
+Frontend/android/.idea/
+Frontend/android/app/src/main/assets/public/
+
+# Electron artifacts
+Frontend/electron/dist/
+Frontend/electron/out/
+
+# Caches
+.eslintcache
+.cache
+.parcel-cache
+*.tsbuildinfo
+.sass-cache/
+.vite/
+.vitest/
+
+# Testing
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+coverage/
+.nyc_output/
+
+# ------------------------------------------
+# Backend (Spring Boot + Maven)
+# ------------------------------------------
+# Maven
+**/target/
+target/
+dependency-reduced-pom.xml
+.mvn/wrapper/*.jar
+
+# Eclipse
+.classpath
+.project
+.settings/
+.factorypath
+
+# STS
+.springBeans
+
+# JRebel
+rebel.xml
+
+# ------------------------------------------
+# Environment Variables & Security
+# ------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.staging
+.env.test
+!.env.example
+Frontend/.env.android
+Frontend/.env.electron
+
+# Security
+ssl/*.pem
+ssl/*.key
+ssl/*.crt
+ssl/*.csr
+*.jks
+*.p12
+
+# ------------------------------------------
+# Docker & Database & Middleware
+# ------------------------------------------
+docker-data/
+**/mysql/data/
+**/seata/data/
+**/nacos/data/
+**/nacos/logs/
+**/redis/data/
+**/rabbitmq/data/
+
+# ------------------------------------------
+# User Data / Uploads
+# ------------------------------------------
+inventory-microservices/uploads/
+uploads/
+**/uploads/
+!**/uploads/.gitkeep
+
+# ------------------------------------------
+# Documentation / Scratch
+# ------------------------------------------
+prompt.md
+plan.md
+TODO.md
+notes.txt

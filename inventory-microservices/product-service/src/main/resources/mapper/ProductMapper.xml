@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.product.mapper.ProductMapper">
+
+    <resultMap id="ProductResultMap" type="com.example.product.entity.Product">
+        <id column="id" property="id" />
+        <result column="sku" property="sku" />
+        <result column="name" property="name" />
+        <result column="category" property="category" />
+        <result column="unit" property="unit" />
+        <result column="barcode" property="barcode" />
+        <result column="sale_price" property="salePrice" />
+        <result column="image_url" property="imageUrls" typeHandler="com.example.product.handler.StringListTypeHandler" />
+        <result column="created_at" property="createdAt" />
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO item (sku, name, category, unit, barcode, sale_price, image_url, created_at)
+        VALUES (#{sku}, #{name}, #{category}, #{unit}, #{barcode}, #{salePrice}, 
+                #{imageUrls, typeHandler=com.example.product.handler.StringListTypeHandler}, #{createdAt})
+    </insert>
+
+    <update id="update">
+        UPDATE item
+        SET sku = #{sku},
+            name = #{name},
+            category = #{category},
+            unit = #{unit},
+            barcode = #{barcode},
+            sale_price = #{salePrice},
+            image_url = #{imageUrls, typeHandler=com.example.product.handler.StringListTypeHandler}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM item WHERE id = #{id}
+    </delete>
+
+    <select id="selectById" resultMap="ProductResultMap">
+        SELECT * FROM item WHERE id = #{id}
+    </select>
+
+    <select id="selectAll" resultMap="ProductResultMap">
+        SELECT * FROM item ORDER BY created_at DESC
+    </select>
+
+    <select id="countByName" resultType="int">
+        SELECT COUNT(*) FROM item
+        WHERE name = #{name}
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+    </select>
+
+    <select id="countBySku" resultType="int">
+        SELECT COUNT(*) FROM item
+        WHERE sku = #{sku}
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+    </select>
+
+</mapper>

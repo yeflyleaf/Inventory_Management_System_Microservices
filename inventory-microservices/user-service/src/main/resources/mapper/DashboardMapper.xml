@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.user.mapper.DashboardMapper">
+
+    <!-- 统计今日销售总额 -->
+    <select id="sumTodaySales" resultType="java.math.BigDecimal">
+        SELECT IFNULL(SUM(total_amount), 0) FROM sales_order WHERE DATE(created_at) = CURDATE()
+    </select>
+
+    <!-- 统计待处理采购订单 -->
+    <select id="countPendingPurchaseOrders" resultType="int">
+        SELECT COUNT(*) FROM purchase_order WHERE status = 'CREATED'
+    </select>
+
+    <!-- 统计待处理销售订单 -->
+    <select id="countPendingSalesOrders" resultType="int">
+        SELECT COUNT(*) FROM sales_order WHERE status = 'CREATED'
+    </select>
+
+    <!-- 最近活动记录 -->
+    <select id="selectRecentFlows" resultType="map">
+        SELECT * FROM stock_flow ORDER BY created_at DESC LIMIT #{limit}
+    </select>
+
+    <!-- 趋势图统计 -->
+    <select id="selectDailyStats" resultType="map">
+        SELECT 
+            DATE(created_at) as date,
+            SUM(CASE WHEN change_amount > 0 THEN change_amount ELSE 0 END) as inbound,
+            SUM(CASE WHEN change_amount &lt; 0 THEN ABS(change_amount) ELSE 0 END) as outbound
+        FROM stock_flow
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        <if test="warehouseId != null">AND warehouse_id = #{warehouseId}</if>
+        GROUP BY DATE(created_at)
+        ORDER BY date ASC
+    </select>
+
+    <!-- 最近活跃商品ID -->
+    <select id="selectDistinctItemIdsRecent" resultType="long">
+        SELECT DISTINCT item_id FROM stock_flow WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+    </select>
+
+    <!-- 分类销售数量统计 -->
+    <select id="selectSalesQtyByCategory" resultType="map">
+        SELECT i.category, SUM(si.qty) as value
+        FROM sales_order_item si
+        JOIN item i ON si.item_id = i.id
+        GROUP BY i.category
+    </select>
+
+    <!-- 分类销售金额统计 -->
+    <select id="selectSalesAmountByCategory" resultType="map">
+        SELECT i.category, SUM(si.subtotal) as value
+        FROM sales_order_item si
+        JOIN item i ON si.item_id = i.id
+        GROUP BY i.category
+    </select>
+
+</mapper>
