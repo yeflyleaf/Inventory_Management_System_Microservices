@@ -16,7 +16,7 @@
   <br>
   <!-- Backend & Cloud -->
   <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Core-Spring%20Boot%203.3.2-6DB33F?style=flat-square&logo=spring-boot" alt="Spring Boot"></a>
-  <a href="https://spring.io/projects/spring-cloud-alibaba"><img src="https://img.shields.io/badge/Cloud-Alibaba%202023.0.1-6DB33F?style=flat-square&logo=spring" alt="SCA"></a>
+  <a href="https://spring.io/projects/spring-cloud-alibaba"><img src="https://img.shields.io/badge/Cloud-Alibaba%202023.0.1.2-6DB33F?style=flat-square&logo=spring" alt="SCA"></a>
   <a href="https://mybatis.org/mybatis-3/"><img src="https://img.shields.io/badge/ORM-MyBatis%203.0.5-black?style=flat-square" alt="MyBatis"></a>
   <a href="https://nacos.io/"><img src="https://img.shields.io/badge/Registry-Nacos%202.3.2-34A3DB?style=flat-square" alt="Nacos"></a>
   <a href="https://seata.io/"><img src="https://img.shields.io/badge/TX-Seata%201.8.0-green?style=flat-square" alt="Seata"></a>
@@ -183,18 +183,9 @@ mvn clean package -DskipTests
 docker-compose up -d --build
 ```
 
-### 方案 B：Kubernetes (K8s) 云原生部署 (零基础上手指南)
+### 方案 B：Kubernetes (K8s) 云原生部署
 
 本项目专门针对本地开发环境（如 Docker Desktop）编写了**一键化部署脚本**。该脚本会自动帮你完成：**Maven 编译打包 ➜ 本地 Docker 镜像构建 ➜ K8s 命名空间与配置创建 ➜ 中间件就绪性等待 ➜ 数据库连通性测试 ➜ 自动发布 Nacos 配置（含重试） ➜ 业务 Pod 滚动更新**。
-
-**K8s 部署方案核心特性：**
-
-- ⚡ **零停机滚动更新** — 所有 Deployment 配置 `RollingUpdate` 策略 (maxSurge:1, maxUnavailable:0)
-- 🔄 **启动依赖保障** — 业务 Pod 通过 `initContainers` 自动等待 Nacos/Seata 就绪后再启动
-- ⏱️ **优雅终止** — 所有 Pod 配置 `terminationGracePeriodSeconds`，避免请求中断
-- 🛡️ **健壮性探针** — 全面配置 `startupProbe` / `readinessProbe` / `livenessProbe` 三级健康检查
-- 🧠 **JVM 调优** — 统一配置 G1GC 垃圾回收器与内存参数
-- 📦 **可选生产增强** — 提供 HPA 弹性伸缩、PDB 中断预算、NetworkPolicy 网络策略
 
 #### 1. 前置准备工作
 
@@ -212,7 +203,7 @@ docker-compose up -d --build
 
 根据你的操作系统，打开终端执行以下命令：
 
-##### Windows (PowerShell) 环境运行：
+**Windows (PowerShell) 环境运行**
 
 打开 PowerShell：
 
@@ -221,9 +212,9 @@ cd inventory-microservices
 powershell -ExecutionPolicy Bypass -File .\deploy-k8s.ps1
 ```
 
-##### Linux / macOS 环境运行：
+**Linux / macOS 环境运行**
 
-打开 Terminal：
+打开 Bash Terminal：
 
 ```bash
 cd inventory-microservices
