@@ -67,11 +67,10 @@ metadata:
     app: frontend
     app.kubernetes.io/part-of: inventory-management
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: frontend
   ports:
   - protocol: TCP
-    port: 80
+    port: 30080
     targetPort: 80
-    nodePort: 30080

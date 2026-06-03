@@ -87,11 +87,15 @@ metadata:
     app: gateway-service
     app.kubernetes.io/part-of: inventory-management
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: gateway-service
   ports:
-  - protocol: TCP
+  - name: api
+    protocol: TCP
     port: 8888
     targetPort: 8888
-    nodePort: 30088
+  - name: external
+    protocol: TCP
+    port: 30088
+    targetPort: 8888
