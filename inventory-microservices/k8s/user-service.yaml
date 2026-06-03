@@ -1,5 +1,5 @@
 # ==========================================
-# User Service - 用户服务
+# User Service - 用户认证与数据看板服务
 # ==========================================
 apiVersion: apps/v1
 kind: Deployment
@@ -9,8 +9,14 @@ metadata:
   labels:
     app: user-service
     app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: user-service
@@ -18,7 +24,14 @@ spec:
     metadata:
       labels:
         app: user-service
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 60
+      # 等待 Nacos 就绪后再启动业务容器
+      initContainers:
+      - name: wait-nacos
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -zw3 nacos-service 8848; do echo "Waiting for Nacos..."; sleep 5; done']
       containers:
       - name: user-service
         image: user-service:1.0
@@ -26,6 +39,9 @@ spec:
         ports:
         - containerPort: 8081
           name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
         envFrom:
         - configMapRef:
             name: microservice-config
@@ -69,6 +85,7 @@ metadata:
   namespace: inventory-system
   labels:
     app: user-service
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: user-service

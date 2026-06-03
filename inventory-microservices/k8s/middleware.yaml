@@ -1,6 +1,8 @@
 ---
 # ==========================================
 # MySQL 宿主机服务映射 (指向外部 demo1 数据库)
+# MySQL 必须运行在宿主机本地 (端口 3306)
+# K8s Pod 通过 host.docker.internal 域名连接
 # ==========================================
 
 # --- 方案 A: 使用 Docker Desktop 内部域名 (推荐) ---
@@ -9,6 +11,9 @@ kind: Service
 metadata:
   name: mysql-service
   namespace: inventory-system
+  labels:
+    app: mysql
+    app.kubernetes.io/part-of: inventory-management
 spec:
   type: ExternalName
   externalName: host.docker.internal
@@ -32,7 +37,7 @@ spec:
 #   namespace: inventory-system
 # subsets:
 #   - addresses:
-#       - ip: 192.168.1.100 
+#       - ip: 192.168.1.100
 #     ports:
 #       - port: 3306
 
@@ -49,8 +54,14 @@ metadata:
   labels:
     app: nacos
     app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: nacos
@@ -58,7 +69,9 @@ spec:
     metadata:
       labels:
         app: nacos
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: nacos
         image: nacos/nacos-server:v2.3.2
@@ -113,6 +126,7 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 15
           timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /nacos/index.html
@@ -120,6 +134,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 3
+          failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -128,6 +143,7 @@ metadata:
   namespace: inventory-system
   labels:
     app: nacos
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: nacos
@@ -135,16 +151,31 @@ spec:
   - name: http
     port: 8848
     targetPort: 8848
-    nodePort: 30848
   - name: rpc
     port: 9848
     targetPort: 9848
-    nodePort: 31848
   - name: raft
     port: 9849
     targetPort: 9849
-    nodePort: 31849
-  type: NodePort
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nacos-service-external
+  namespace: inventory-system
+  labels:
+    app: nacos
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  type: LoadBalancer
+  selector:
+    app: nacos
+  ports:
+  - name: http
+    port: 30848
+    targetPort: 8848
 
 ---
 # ==========================================
@@ -158,8 +189,14 @@ metadata:
   labels:
     app: redis
     app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: redis
@@ -167,14 +204,26 @@ spec:
     metadata:
       labels:
         app: redis
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: redis
         image: redis:7-alpine
-        command: ["redis-server", "--appendonly", "yes"]
+        command:
+        - redis-server
+        - "--appendonly"
+        - "yes"
+        - "--maxmemory"
+        - "200mb"
+        - "--maxmemory-policy"
+        - "allkeys-lru"
         ports:
         - containerPort: 6379
           name: redis
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
         resources:
           requests:
             cpu: 100m
@@ -190,6 +239,7 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 3
+          failureThreshold: 3
         readinessProbe:
           exec:
             command:
@@ -198,6 +248,10 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: redis-data
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -206,6 +260,7 @@ metadata:
   namespace: inventory-system
   labels:
     app: redis
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: redis
@@ -227,8 +282,14 @@ metadata:
   labels:
     app: seata
     app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: seata
@@ -236,7 +297,9 @@ spec:
     metadata:
       labels:
         app: seata
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: seata
         image: seataio/seata-server:1.8.0
@@ -263,12 +326,14 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 15
           timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           tcpSocket:
             port: 8091
           initialDelaySeconds: 15
           periodSeconds: 10
           timeoutSeconds: 3
+          failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -277,6 +342,7 @@ metadata:
   namespace: inventory-system
   labels:
     app: seata
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: seata
@@ -301,8 +367,14 @@ metadata:
   labels:
     app: sentinel
     app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: sentinel
@@ -310,10 +382,15 @@ spec:
     metadata:
       labels:
         app: sentinel
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: sentinel
         image: bladex/sentinel-dashboard:1.8.8
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms128m -Xmx256m"
         ports:
         - containerPort: 8858
           name: http
@@ -331,6 +408,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 15
           timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /
@@ -338,6 +416,7 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 10
           timeoutSeconds: 3
+          failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -346,6 +425,7 @@ metadata:
   namespace: inventory-system
   labels:
     app: sentinel
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: sentinel

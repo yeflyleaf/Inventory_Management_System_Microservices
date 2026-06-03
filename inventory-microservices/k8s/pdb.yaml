@@ -1,0 +1,51 @@
+# ==========================================
+# PodDisruptionBudget — Pod 中断预算
+# ==========================================
+# 确保节点维护或自愿驱逐期间，关键服务保持最小可用副本数
+# 手动 apply: kubectl apply -f k8s/pdb.yaml
+# ==========================================
+
+---
+# Gateway Service PDB - 保证至少 1 个 Pod 可用
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway-service-pdb
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gateway-service
+
+---
+# Nacos PDB - 保证至少 1 个 Pod 可用
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nacos-pdb
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: nacos
+
+---
+# Redis PDB - 保证至少 1 个 Pod 可用
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: redis

@@ -1,7 +1,14 @@
 # =====================================================================
 # Kubernetes 微服务部署清单 (合并版)
-# 包含：Namespace → ConfigMap/Secret → 中间件 → 业务微服务
-# 部署顺序：kubectl apply -f microservices-k8s.yaml
+# =====================================================================
+# 此文件为 k8s/ 目录拆分清单的合并版本，内容保持一致。
+# 包含：Namespace → ConfigMap/Secret → 中间件 → 业务微服务 → 前端
+#
+# 一键部署（不推荐，推荐使用 deploy-k8s.ps1/sh 脚本）：
+#   kubectl apply -f microservices-k8s.yaml
+#
+# 推荐使用一键脚本部署（会自动等待中间件就绪并发布 Nacos 配置）：
+#   powershell -ExecutionPolicy Bypass -File .\deploy-k8s.ps1
 # =====================================================================
 
 # --- 0. Namespace ---
@@ -11,6 +18,7 @@ metadata:
   name: inventory-system
   labels:
     app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/managed-by: kubectl
 
 ---
 # --- 0.1 ConfigMap ---
@@ -19,14 +27,22 @@ kind: ConfigMap
 metadata:
   name: microservice-config
   namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
 data:
   MYSQL_HOST: "mysql-service"
   MYSQL_PORT: "3306"
   MYSQL_DATABASE: "demo1"
   NACOS_HOST: "nacos-service"
+  NACOS_PORT: "8848"
   REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
   SEATA_HOST: "seata-service"
+  SEATA_PORT: "8091"
   SENTINEL_DASHBOARD: "sentinel-service"
+  SENTINEL_PORT: "8080"
+  SPRING_PROFILES_ACTIVE: "k8s"
+  JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
 
 ---
 # --- 0.2 Secret ---
@@ -35,106 +51,28 @@ kind: Secret
 metadata:
   name: microservice-secret
   namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
 type: Opaque
 stringData:
   MYSQL_USERNAME: "user1"
   MYSQL_PASSWORD: "user1"
 
 ---
-# --- 1. MySQL PVC ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mysql-pvc
-  namespace: inventory-system
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
-
----
-# --- 1.1 MySQL Deployment ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mysql
-  namespace: inventory-system
-  labels:
-    app: mysql
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: mysql
-  strategy:
-    type: Recreate
-  template:
-    metadata:
-      labels:
-        app: mysql
-    spec:
-      containers:
-      - name: mysql
-        image: mysql:8.0
-        env:
-        - name: MYSQL_ALLOW_EMPTY_PASSWORD
-          value: "yes"
-        - name: MYSQL_DATABASE
-          valueFrom:
-            configMapKeyRef:
-              name: microservice-config
-              key: MYSQL_DATABASE
-        - name: MYSQL_USER
-          valueFrom:
-            secretKeyRef:
-              name: microservice-secret
-              key: MYSQL_USERNAME
-        - name: MYSQL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: microservice-secret
-              key: MYSQL_PASSWORD
-        ports:
-        - containerPort: 3306
-        volumeMounts:
-        - name: mysql-storage
-          mountPath: /var/lib/mysql
-        resources:
-          requests:
-            cpu: 250m
-            memory: 512Mi
-          limits:
-            cpu: "1"
-            memory: 1Gi
-        livenessProbe:
-          exec:
-            command: ["mysqladmin", "ping", "-h", "localhost"]
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          exec:
-            command: ["mysqladmin", "ping", "-h", "localhost"]
-          initialDelaySeconds: 15
-          periodSeconds: 5
-      volumes:
-      - name: mysql-storage
-        persistentVolumeClaim:
-          claimName: mysql-pvc
-
----
+# --- 1. Host MySQL mapping ---
+# MySQL must run on the host machine, not in Docker or Kubernetes.
+# Pods use mysql-service as an in-cluster DNS alias for host.docker.internal.
 apiVersion: v1
 kind: Service
 metadata:
   name: mysql-service
   namespace: inventory-system
-spec:
-  selector:
+  labels:
     app: mysql
-  ports:
-  - port: 3306
-    targetPort: 3306
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  type: ExternalName
+  externalName: host.docker.internal
 
 ---
 # --- 2. Nacos ---
@@ -145,8 +83,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: nacos
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: nacos
@@ -154,7 +99,9 @@ spec:
     metadata:
       labels:
         app: nacos
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: nacos
         image: nacos/nacos-server:v2.3.2
@@ -190,8 +137,11 @@ spec:
           value: "256m"
         ports:
         - containerPort: 8848
+          name: http
         - containerPort: 9848
+          name: rpc
         - containerPort: 9849
+          name: raft
         resources:
           requests:
             cpu: 250m
@@ -205,12 +155,16 @@ spec:
             port: 8848
           initialDelaySeconds: 60
           periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /nacos/index.html
             port: 8848
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
 
 ---
 apiVersion: v1
@@ -218,6 +172,9 @@ kind: Service
 metadata:
   name: nacos-service
   namespace: inventory-system
+  labels:
+    app: nacos
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: nacos
@@ -225,12 +182,14 @@ spec:
   - name: http
     port: 8848
     targetPort: 8848
+    nodePort: 30848
   - name: rpc
     port: 9848
     targetPort: 9848
   - name: raft
     port: 9849
     targetPort: 9849
+  type: NodePort
 
 ---
 # --- 3. Redis ---
@@ -241,8 +200,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: redis
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: redis
@@ -250,13 +216,26 @@ spec:
     metadata:
       labels:
         app: redis
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: redis
         image: redis:7-alpine
-        command: ["redis-server", "--appendonly", "yes"]
+        command:
+        - redis-server
+        - "--appendonly"
+        - "yes"
+        - "--maxmemory"
+        - "200mb"
+        - "--maxmemory-policy"
+        - "allkeys-lru"
         ports:
         - containerPort: 6379
+          name: redis
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
         resources:
           requests:
             cpu: 100m
@@ -266,14 +245,25 @@ spec:
             memory: 256Mi
         livenessProbe:
           exec:
-            command: ["redis-cli", "ping"]
+            command:
+            - redis-cli
+            - ping
           initialDelaySeconds: 10
           periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
         readinessProbe:
           exec:
-            command: ["redis-cli", "ping"]
+            command:
+            - redis-cli
+            - ping
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: redis-data
+        emptyDir: {}
 
 ---
 apiVersion: v1
@@ -281,12 +271,17 @@ kind: Service
 metadata:
   name: redis-service
   namespace: inventory-system
+  labels:
+    app: redis
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: redis
   ports:
-  - port: 6379
+  - protocol: TCP
+    port: 6379
     targetPort: 6379
+  type: ClusterIP
 
 ---
 # --- 4. Seata ---
@@ -297,8 +292,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: seata
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: seata
@@ -306,7 +308,9 @@ spec:
     metadata:
       labels:
         app: seata
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: seata
         image: seataio/seata-server:1.8.0
@@ -317,7 +321,9 @@ spec:
           value: "file"
         ports:
         - containerPort: 8091
+          name: rpc
         - containerPort: 7091
+          name: http
         resources:
           requests:
             cpu: 200m
@@ -330,11 +336,15 @@ spec:
             port: 8091
           initialDelaySeconds: 30
           periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           tcpSocket:
             port: 8091
           initialDelaySeconds: 15
           periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
 
 ---
 apiVersion: v1
@@ -342,6 +352,9 @@ kind: Service
 metadata:
   name: seata-service
   namespace: inventory-system
+  labels:
+    app: seata
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: seata
@@ -352,6 +365,7 @@ spec:
   - name: http
     port: 7091
     targetPort: 7091
+  type: ClusterIP
 
 ---
 # --- 5. Sentinel Dashboard ---
@@ -362,8 +376,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: sentinel
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: middleware
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: sentinel
@@ -371,12 +392,18 @@ spec:
     metadata:
       labels:
         app: sentinel
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: sentinel
         image: bladex/sentinel-dashboard:1.8.8
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms128m -Xmx256m"
         ports:
         - containerPort: 8858
+          name: http
         resources:
           requests:
             cpu: 100m
@@ -390,12 +417,16 @@ spec:
             port: 8858
           initialDelaySeconds: 30
           periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /
             port: 8858
           initialDelaySeconds: 15
           periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
 
 ---
 apiVersion: v1
@@ -403,12 +434,17 @@ kind: Service
 metadata:
   name: sentinel-service
   namespace: inventory-system
+  labels:
+    app: sentinel
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: sentinel
   ports:
-  - port: 8080
+  - protocol: TCP
+    port: 8080
     targetPort: 8858
+  type: ClusterIP
 
 ---
 # --- 6. User Service ---
@@ -419,8 +455,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: user-service
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: user-service
@@ -428,13 +471,23 @@ spec:
     metadata:
       labels:
         app: user-service
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      - name: wait-nacos
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -zw3 nacos-service 8848; do echo "Waiting for Nacos..."; sleep 5; done']
       containers:
       - name: user-service
         image: user-service:1.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8081
+          name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
         envFrom:
         - configMapRef:
             name: microservice-config
@@ -453,6 +506,7 @@ spec:
             port: 8081
           initialDelaySeconds: 60
           periodSeconds: 15
+          timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
@@ -460,6 +514,7 @@ spec:
             port: 8081
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
         startupProbe:
           httpGet:
@@ -475,11 +530,15 @@ kind: Service
 metadata:
   name: user-service
   namespace: inventory-system
+  labels:
+    app: user-service
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: user-service
   ports:
-  - port: 8081
+  - protocol: TCP
+    port: 8081
     targetPort: 8081
   type: ClusterIP
 
@@ -492,8 +551,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: product-service
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: product-service
@@ -501,18 +567,31 @@ spec:
     metadata:
       labels:
         app: product-service
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      - name: wait-nacos
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -zw3 nacos-service 8848; do echo "Waiting for Nacos..."; sleep 5; done']
       containers:
       - name: product-service
         image: product-service:1.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8082
+          name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
         envFrom:
         - configMapRef:
             name: microservice-config
         - secretRef:
             name: microservice-secret
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
         resources:
           requests:
             cpu: 200m
@@ -526,6 +605,7 @@ spec:
             port: 8082
           initialDelaySeconds: 60
           periodSeconds: 15
+          timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
@@ -533,6 +613,7 @@ spec:
             port: 8082
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
         startupProbe:
           httpGet:
@@ -541,6 +622,9 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 5
           failureThreshold: 20
+      volumes:
+      - name: uploads
+        emptyDir: {}
 
 ---
 apiVersion: v1
@@ -548,11 +632,15 @@ kind: Service
 metadata:
   name: product-service
   namespace: inventory-system
+  labels:
+    app: product-service
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: product-service
   ports:
-  - port: 8082
+  - protocol: TCP
+    port: 8082
     targetPort: 8082
   type: ClusterIP
 
@@ -565,8 +653,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: order-service
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: order-service
@@ -574,13 +669,26 @@ spec:
     metadata:
       labels:
         app: order-service
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      - name: wait-nacos
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -zw3 nacos-service 8848; do echo "Waiting for Nacos..."; sleep 5; done']
+      - name: wait-seata
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -zw3 seata-service 8091; do echo "Waiting for Seata..."; sleep 5; done']
       containers:
       - name: order-service
         image: order-service:1.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8083
+          name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
         envFrom:
         - configMapRef:
             name: microservice-config
@@ -599,6 +707,7 @@ spec:
             port: 8083
           initialDelaySeconds: 60
           periodSeconds: 15
+          timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
@@ -606,6 +715,7 @@ spec:
             port: 8083
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
         startupProbe:
           httpGet:
@@ -621,11 +731,15 @@ kind: Service
 metadata:
   name: order-service
   namespace: inventory-system
+  labels:
+    app: order-service
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: order-service
   ports:
-  - port: 8083
+  - protocol: TCP
+    port: 8083
     targetPort: 8083
   type: ClusterIP
 
@@ -638,8 +752,15 @@ metadata:
   namespace: inventory-system
   labels:
     app: gateway-service
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: gateway-service
@@ -647,13 +768,23 @@ spec:
     metadata:
       labels:
         app: gateway-service
+        app.kubernetes.io/part-of: inventory-management
     spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      - name: wait-nacos
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -zw3 nacos-service 8848; do echo "Waiting for Nacos..."; sleep 5; done']
       containers:
       - name: gateway-service
         image: gateway-service:1.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8888
+          name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
         envFrom:
         - configMapRef:
             name: microservice-config
@@ -672,6 +803,7 @@ spec:
             port: 8888
           initialDelaySeconds: 60
           periodSeconds: 15
+          timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
@@ -679,6 +811,7 @@ spec:
             port: 8888
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
         startupProbe:
           httpGet:
@@ -694,11 +827,93 @@ kind: Service
 metadata:
   name: gateway-service
   namespace: inventory-system
+  labels:
+    app: gateway-service
+    app.kubernetes.io/part-of: inventory-management
 spec:
   selector:
     app: gateway-service
   ports:
-  - port: 8888
+  - protocol: TCP
+    port: 8888
     targetPort: 8888
     nodePort: 30088
+  type: NodePort
+
+---
+# --- 10. Frontend ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: inventory-system
+  labels:
+    app: frontend
+    app.kubernetes.io/part-of: inventory-management
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        app.kubernetes.io/part-of: inventory-management
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: frontend
+        image: frontend:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 15
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: inventory-system
+  labels:
+    app: frontend
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  selector:
+    app: frontend
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+    nodePort: 30080
   type: NodePort

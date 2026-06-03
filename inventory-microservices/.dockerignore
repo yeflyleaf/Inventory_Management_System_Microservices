@@ -1,0 +1,53 @@
+# ============================================================================
+# Microservices Docker 构建忽略列表
+# 减少 Docker 构建上下文大小，加速镜像构建
+# ============================================================================
+
+# Maven 构建产物 (JAR 由 build-arg 指定，其余不需要)
+# 注意: 不排除 */target/*.jar，因为 Dockerfile 的 COPY 需要它
+*/target/classes
+*/target/generated-sources
+*/target/maven-archiver
+*/target/maven-status
+*/target/test-classes
+*/target/surefire-reports
+
+# IDE 与编辑器
+.idea
+.vscode
+*.iml
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# K8s 清单 (不参与 Docker 镜像构建)
+k8s
+microservices-k8s.yaml
+
+# 部署脚本
+deploy-k8s.ps1
+deploy-k8s.sh
+docker-compose*.yml
+
+# 数据库数据目录
+mysql/data
+
+# 上传文件
+uploads
+
+# 文档
+*.md
+!README.md
+
+# Maven Wrapper (镜像内不需要)
+.mvn
+mvnw
+mvnw.cmd
+
+# 配置文件 (不需要进入镜像)
+nacos-common-config.yaml
+sentinel-rules.json
+seata_undo_log.sql

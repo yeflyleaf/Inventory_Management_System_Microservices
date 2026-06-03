@@ -1,0 +1,216 @@
+# ==========================================
+# NetworkPolicy — 网络策略 (最小权限控制)
+# ==========================================
+# 注意: Docker Desktop 默认 K8s 不执行 NetworkPolicy,
+# 需要安装 Calico 等 CNI 插件才能生效。
+# 此文件为生产环境准备，可选手动 apply:
+#   kubectl apply -f k8s/network-policy.yaml
+# ==========================================
+
+---
+# 仅允许 frontend 访问 gateway-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-gateway
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway-service
+  policyTypes:
+  - Ingress
+  ingress:
+  # 允许外部通过 NodePort 访问
+  - ports:
+    - protocol: TCP
+      port: 8888
+  # 允许 frontend Pod 访问
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 8888
+
+---
+# 仅允许 gateway 访问业务微服务
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-backend
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - user-service
+      - product-service
+      - order-service
+  policyTypes:
+  - Ingress
+  ingress:
+  # 允许 gateway-service 访问
+  - from:
+    - podSelector:
+        matchLabels:
+          app: gateway-service
+    ports:
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 8082
+    - protocol: TCP
+      port: 8083
+  # 允许业务微服务之间 (OpenFeign RPC) 互访
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - user-service
+          - product-service
+          - order-service
+    ports:
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 8082
+    - protocol: TCP
+      port: 8083
+
+---
+# 允许所有业务 Pod 访问 Nacos
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-nacos
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  podSelector:
+    matchLabels:
+      app: nacos
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - user-service
+          - product-service
+          - order-service
+          - gateway-service
+    ports:
+    - protocol: TCP
+      port: 8848
+    - protocol: TCP
+      port: 9848
+    - protocol: TCP
+      port: 9849
+  # 允许外部通过 NodePort 访问 (部署脚本需要)
+  - ports:
+    - protocol: TCP
+      port: 8848
+
+---
+# 允许业务 Pod 访问 Redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-redis
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - user-service
+          - product-service
+          - order-service
+          - gateway-service
+    ports:
+    - protocol: TCP
+      port: 6379
+
+---
+# 允许业务 Pod 访问 Seata
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-seata
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  podSelector:
+    matchLabels:
+      app: seata
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - product-service
+          - order-service
+    ports:
+    - protocol: TCP
+      port: 8091
+    - protocol: TCP
+      port: 7091
+
+---
+# 允许业务 Pod 上报 Sentinel
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-sentinel
+  namespace: inventory-system
+  labels:
+    app.kubernetes.io/part-of: inventory-management
+spec:
+  podSelector:
+    matchLabels:
+      app: sentinel
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - user-service
+          - product-service
+          - order-service
+          - gateway-service
+    ports:
+    - protocol: TCP
+      port: 8858

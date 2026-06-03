@@ -1,0 +1,45 @@
+# ============================================================================
+# Frontend Docker 构建忽略列表
+# 减少 Docker 构建上下文大小，加速镜像构建
+# ============================================================================
+
+# 依赖与构建产物
+node_modules
+dist
+dist_electron
+
+# 测试相关
+e2e
+test-results
+playwright-report
+coverage
+
+# 原生平台 (不参与 Docker 构建)
+android
+electron
+
+# IDE 与编辑器
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# 环境变量 (防止泄露)
+.env
+.env.local
+.env.*.local
+.env.android
+.env.electron
+
+# Docker 自身 (避免循环)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# 文档
+*.md
+!README.md
