@@ -42,54 +42,7 @@
 
 ## 🏗️ 架构设计与系统概览 (Architecture)
 
-### 1. 微服务拓扑架构图
-
-系统采用三层分布式架构，由端侧、API 网关、业务微服务集群与基础设施层构成：
-
-```mermaid
-flowchart TD
-    subgraph 端侧层 [多端接入层 (Client Layer)]
-        Web[Web 浏览器]
-        ElectronApp[Electron 桌面端]
-        AndroidApp[Capacitor 安卓端]
-    end
-
-    subgraph 网关层 [统一入口与流量治理]
-        Gateway[Spring Cloud Gateway :8888]
-        SentinelDash[Sentinel 控制台 :8858]
-        Gateway -.->|流量治理规则| SentinelDash
-    end
-
-    subgraph 业务微服务集群 [Business Microservices]
-        UserSvc[User Service :8081<br/>用户认证与数据看板]
-        ProductSvc[Product Service :8082<br/>商品、仓库与条码]
-        OrderSvc[Order Service :8083<br/>采购销售单据]
-
-        OrderSvc -- "OpenFeign RPC" --> ProductSvc
-        OrderSvc -- "OpenFeign RPC" --> UserSvc
-    end
-
-    subgraph 基础设施层 [Infrastructure & Middleware]
-        Nacos[Nacos Server :8848/9848<br/>注册与配置中心]
-        Seata[Seata TC :8091<br/>分布式事务控制]
-        Redis[(Redis 缓存/Token)]
-        MySQL[(MySQL 8.0 业务库)]
-    end
-
-    %% 流量路由与控制流
-    Web & ElectronApp & AndroidApp -->|HTTP/HTTPS 请求| Gateway
-    Gateway -->|路由转发 & JWT 鉴权| UserSvc
-    Gateway -->|路由转发 & JWT 鉴权| ProductSvc
-    Gateway -->|路由转发 & JWT 鉴权| OrderSvc
-
-    %% 基础设施依赖
-    UserSvc & ProductSvc & OrderSvc & Gateway -.->|服务注册与拉取| Nacos
-    OrderSvc & ProductSvc -.->|分布式事务协作| Seata
-    UserSvc & Gateway -.->|Token 状态同步| Redis
-    UserSvc & ProductSvc & OrderSvc -->|持久化读写| MySQL
-```
-
-### 2. 微服务七大核心组件
+### 微服务七大核心组件
 
 | 核心组件             | 技术实现         | 核心职能描述                                                                 |
 | :------------------- | :--------------- | :--------------------------------------------------------------------------- |
