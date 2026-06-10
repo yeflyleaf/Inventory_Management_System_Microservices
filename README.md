@@ -223,6 +223,18 @@ chmod +x deploy-k8s.sh && ./deploy-k8s.sh
 
 ---
 
+## 🔌 K8s 生产部署端口清单 (K8s Production Ports)
+
+在 Kubernetes (K8s) 生产部署环境下，系统对外暴露且允许外部客户端访问的物理节点端口 (NodePort) 如下：
+
+| 服务名称 | 集群内部端口 (Port) | 物理节点端口 (NodePort) | 作用与描述 |
+| :--- | :--- | :--- | :--- |
+| **frontend-service (前端服务)** | `80` | `30080` | 系统的 Web 页面访问入口 |
+| **gateway-service (网关服务)** | `8888` | `30088` | 后端微服务统一路由与 API 网关接口入口 |
+| **nacos-service (配置中心/注册中心)** | `8848` | `30848` | Nacos 服务注册中心及配置中心控制台入口 |
+
+---
+
 ## 📄 开源许可证 (License)
 
 本项目采用 [AGPL-3.0](LICENSE) 许可证发布。
